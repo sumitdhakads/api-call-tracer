@@ -27,6 +27,7 @@ class ApiTracker extends StatefulWidget {
 class _ApiTrackerState extends State<ApiTracker>
     with WidgetsBindingObserver {
   final ApiTrackerService _trackerService = ApiTrackerService();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -55,6 +56,7 @@ class _ApiTrackerState extends State<ApiTracker>
   @override
   Widget build(BuildContext context) {
     return TapDetector(
+      navigatorKey: _navigatorKey,
       child: widget.materialApp,
     );
   }

@@ -5,10 +5,12 @@ import 'api_logs_bottom_sheet.dart';
 
 class TapDetector extends StatefulWidget {
   final Widget child;
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   const TapDetector({
     super.key,
     required this.child,
+    this.navigatorKey,
   });
 
   @override
@@ -19,6 +21,7 @@ class _TapDetectorState extends State<TapDetector> {
   int _tapCount = 0;
   Timer? _resetTimer;
   final ApiTrackerService _trackerService = ApiTrackerService();
+  BuildContext? _materialAppContext;
 
   void _handleTap() {
     setState(() {
@@ -49,10 +52,35 @@ class _TapDetectorState extends State<TapDetector> {
 
   void _showApiLogs() {
     final apiCalls = _trackerService.apiCalls;
+    
+    // Get context from MaterialApp tree - use stored context or navigator
+    BuildContext? targetContext = _materialAppContext;
+    
+    // If we don't have stored context, try to get it from navigator
+    if (targetContext == null) {
+      // Try navigator key first
+      if (widget.navigatorKey?.currentContext != null) {
+        targetContext = widget.navigatorKey!.currentContext;
+      } else {
+        // Try to find root navigator
+        try {
+          final navigator = Navigator.maybeOf(context, rootNavigator: true);
+          targetContext = navigator?.context;
+        } catch (e) {
+          // If that fails, we'll use the stored context from Builder
+        }
+      }
+    }
+    
+    // Use stored context from Builder (which is inside MaterialApp tree)
+    targetContext ??= _materialAppContext ?? context;
+    
+    // Show bottom sheet with useRootNavigator to ensure MaterialLocalizations
     showModalBottomSheet(
-      context: context,
+      context: targetContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      useRootNavigator: true,
       builder: (context) => ApiLogsBottomSheet(apiCalls: apiCalls),
     );
   }
@@ -68,7 +96,24 @@ class _TapDetectorState extends State<TapDetector> {
     return Listener(
       onPointerDown: (_) => _handleTap(),
       behavior: HitTestBehavior.translucent,
-      child: widget.child,
+      child: Builder(
+        builder: (builderContext) {
+          // Store the context from inside MaterialApp tree after first frame
+          // This ensures we have a context with MaterialLocalizations
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _materialAppContext == null) {
+              // Verify this context has MaterialLocalizations before storing
+              try {
+                MaterialLocalizations.of(builderContext);
+                _materialAppContext = builderContext;
+              } catch (e) {
+                // Context doesn't have MaterialLocalizations yet, will try again later
+              }
+            }
+          });
+          return widget.child;
+        },
+      ),
     );
   }
 }
