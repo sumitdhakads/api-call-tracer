@@ -23,6 +23,7 @@ class _TapDetectorState extends State<TapDetector> {
   Timer? _resetTimer;
   final ApiTrackerService _trackerService = ApiTrackerService();
   BuildContext? _materialAppContext;
+  BuildContext? _navigatorContext;
 
   void _handleTap() {
     setState(() {
@@ -62,60 +63,94 @@ class _TapDetectorState extends State<TapDetector> {
     final apiCalls = _trackerService.apiCalls;
     debugPrint('📊 ApiTracker: Preparing to show API logs. Total API calls: ${apiCalls.length}');
     
-    // Priority 1: Use navigator key context (should have Navigator since it's passed to MaterialApp)
-    BuildContext? targetContext = widget.navigatorKey?.currentContext;
-    if (targetContext != null) {
-      debugPrint('✅ ApiTracker: Using navigator key context');
-      // Verify it has Navigator
+    BuildContext? targetContext;
+    
+    // Priority 1: Use stored Navigator context (most reliable)
+    if (_navigatorContext != null) {
+      debugPrint('🔍 ApiTracker: Checking stored Navigator context...');
       try {
-        Navigator.of(targetContext, rootNavigator: true);
-        debugPrint('✅ ApiTracker: Navigator key context has Navigator');
+        Navigator.of(_navigatorContext!, rootNavigator: true);
+        targetContext = _navigatorContext;
+        debugPrint('✅ ApiTracker: Using stored Navigator context');
       } catch (e) {
-        debugPrint('⚠️ ApiTracker: Navigator key context does not have Navigator, trying alternatives...');
-        targetContext = null;
+        debugPrint('⚠️ ApiTracker: Stored Navigator context is invalid: $e');
+        _navigatorContext = null; // Clear invalid context
       }
     }
     
-    // Priority 2: Try to find Navigator from any available context
+    // Priority 2: Use stored MaterialApp context (should have Navigator if captured correctly)
     if (targetContext == null) {
-      // Try MaterialApp context
       final materialContext = MaterialAppContext.context;
       if (materialContext != null) {
+        debugPrint('🔍 ApiTracker: Checking MaterialApp context for Navigator...');
         try {
+          // Try to get Navigator from MaterialApp context
           final navigator = Navigator.maybeOf(materialContext, rootNavigator: true);
           if (navigator != null) {
             targetContext = navigator.context;
+            _navigatorContext = navigator.context; // Store it for next time
             debugPrint('✅ ApiTracker: Found Navigator from MaterialApp context');
+          } else {
+            // If Navigator.maybeOf returns null, try Navigator.of to get the context directly
+            try {
+              Navigator.of(materialContext, rootNavigator: true);
+              targetContext = materialContext;
+              _navigatorContext = materialContext; // Store it for next time
+              debugPrint('✅ ApiTracker: MaterialApp context itself has Navigator');
+            } catch (e) {
+              debugPrint('⚠️ ApiTracker: MaterialApp context does not have Navigator: $e');
+            }
           }
         } catch (e) {
-          // Continue trying
+          debugPrint('⚠️ ApiTracker: Error checking MaterialApp context: $e');
         }
       }
-      
-      // Try current context
-      if (targetContext == null) {
+    }
+    
+    // Priority 3: Try navigator key context (for regular MaterialApp)
+    if (targetContext == null) {
+      targetContext = widget.navigatorKey?.currentContext;
+      if (targetContext != null) {
+        debugPrint('✅ ApiTracker: Using navigator key context');
+        // Verify it has Navigator
         try {
-          final navigator = Navigator.maybeOf(context, rootNavigator: true);
-          if (navigator != null) {
-            targetContext = navigator.context;
-            debugPrint('✅ ApiTracker: Found Navigator from current context');
-          }
+          Navigator.of(targetContext, rootNavigator: true);
+          _navigatorContext = targetContext; // Store it for next time
+          debugPrint('✅ ApiTracker: Navigator key context has Navigator');
         } catch (e) {
-          // Continue trying
+          debugPrint('⚠️ ApiTracker: Navigator key context does not have Navigator: $e');
+          targetContext = null;
         }
       }
-      
-      // Try stored context
-      if (targetContext == null && _materialAppContext != null) {
-        try {
-          final navigator = Navigator.maybeOf(_materialAppContext!, rootNavigator: true);
-          if (navigator != null) {
-            targetContext = navigator.context;
-            debugPrint('✅ ApiTracker: Found Navigator from stored context');
-          }
-        } catch (e) {
-          // All attempts failed
+    }
+    
+    // Priority 4: Try current context
+    if (targetContext == null) {
+      debugPrint('🔍 ApiTracker: Checking current context for Navigator...');
+      try {
+        final navigator = Navigator.maybeOf(context, rootNavigator: true);
+        if (navigator != null) {
+          targetContext = navigator.context;
+          _navigatorContext = navigator.context; // Store it for next time
+          debugPrint('✅ ApiTracker: Found Navigator from current context');
         }
+      } catch (e) {
+        debugPrint('⚠️ ApiTracker: Error checking current context: $e');
+      }
+    }
+    
+    // Priority 5: Try stored context from Builder
+    if (targetContext == null && _materialAppContext != null) {
+      debugPrint('🔍 ApiTracker: Checking stored Builder context for Navigator...');
+      try {
+        final navigator = Navigator.maybeOf(_materialAppContext!, rootNavigator: true);
+        if (navigator != null) {
+          targetContext = navigator.context;
+          _navigatorContext = navigator.context; // Store it for next time
+          debugPrint('✅ ApiTracker: Found Navigator from stored Builder context');
+        }
+      } catch (e) {
+        debugPrint('⚠️ ApiTracker: Error checking stored Builder context: $e');
       }
     }
     
@@ -126,6 +161,13 @@ class _TapDetectorState extends State<TapDetector> {
       debugPrint('   Navigator key context: ${widget.navigatorKey?.currentContext != null}');
       debugPrint('   MaterialApp context: ${MaterialAppContext.context != null}');
       debugPrint('   Stored context: ${_materialAppContext != null}');
+      // Try one more time with a delayed callback to see if Navigator is ready
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        debugPrint('🔄 ApiTracker: Retrying after frame callback...');
+        Future.delayed(const Duration(milliseconds: 100), () {
+          _showApiLogs();
+        });
+      });
       return;
     }
     
@@ -135,6 +177,15 @@ class _TapDetectorState extends State<TapDetector> {
       debugPrint('✅ ApiTracker: Context has MaterialLocalizations');
     } catch (e) {
       debugPrint('❌ ApiTracker: Context does not have MaterialLocalizations: $e');
+      return;
+    }
+    
+    // Verify the context has Navigator (final check)
+    try {
+      Navigator.of(targetContext, rootNavigator: true);
+      debugPrint('✅ ApiTracker: Context has Navigator (verified)');
+    } catch (e) {
+      debugPrint('❌ ApiTracker: Context does not have Navigator (final check failed): $e');
       return;
     }
     
@@ -172,15 +223,27 @@ class _TapDetectorState extends State<TapDetector> {
       child: Builder(
         builder: (builderContext) {
           // Store the context from inside MaterialApp tree after first frame
-          // This ensures we have a context with MaterialLocalizations
+          // This ensures we have a context with MaterialLocalizations and Navigator
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _materialAppContext == null) {
-              // Verify this context has MaterialLocalizations before storing
+            if (mounted) {
+              // Try to verify this context has both MaterialLocalizations and Navigator
               try {
                 MaterialLocalizations.of(builderContext);
-                _materialAppContext = builderContext;
+                // Try to find Navigator
+                final navigator = Navigator.maybeOf(builderContext, rootNavigator: true);
+                if (navigator != null) {
+                  _navigatorContext = navigator.context;
+                  debugPrint('✅ ApiTracker: Stored Navigator context from Builder');
+                }
+                if (_materialAppContext == null) {
+                  _materialAppContext = builderContext;
+                }
               } catch (e) {
-                // Context doesn't have MaterialLocalizations yet, will try again later
+                // Context doesn't have required dependencies yet
+                if (_materialAppContext == null) {
+                  _materialAppContext = builderContext;
+                  debugPrint('⚠️ ApiTracker: Stored Builder context (Navigator may not be ready yet)');
+                }
               }
             }
           });
