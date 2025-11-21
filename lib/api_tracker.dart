@@ -83,13 +83,27 @@ class _ApiTrackerState extends State<ApiTracker>
         builder: (context, child) {
           // Store the context from inside MaterialApp
           MaterialAppContext.setContext(context);
-          // Ensure child is never null
-          final nonNullChild = child ?? const SizedBox.shrink();
-          // Call original builder if exists, ensuring we always return Widget
+          // Wrap with Builder to get context after Navigator is built
+          Widget result = Builder(
+            builder: (navContext) {
+              // After Navigator is built, store the context that has Navigator
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                try {
+                  // Verify this context has Navigator
+                  Navigator.of(navContext, rootNavigator: true);
+                  MaterialAppContext.setContext(navContext);
+                } catch (e) {
+                  // Navigator not available yet, keep the original context
+                }
+              });
+              return child ?? const SizedBox.shrink();
+            },
+          );
+          // Call original builder if exists
           if (app.builder != null) {
-            return app.builder!(context, child);
+            result = app.builder!(context, result);
           }
-          return nonNullChild;
+          return result;
         },
         locale: app.locale,
         localizationsDelegates: app.localizationsDelegates,
