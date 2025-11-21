@@ -14,10 +14,41 @@ import 'widgets/tap_detector.dart';
 /// Global context storage for MaterialApp context
 class MaterialAppContext {
   static BuildContext? _context;
+  static BuildContext? _navigatorContext;
+  
   static void setContext(BuildContext? context) {
     _context = context;
   }
+  
   static BuildContext? get context => _context;
+  
+  static void setNavigatorContext(BuildContext? context) {
+    _navigatorContext = context;
+  }
+  
+  static BuildContext? get navigatorContext => _navigatorContext;
+  
+  static void _tryCaptureNavigatorContext(BuildContext navContext) {
+    try {
+      // Try to find Navigator from this context
+      final navigator = Navigator.maybeOf(navContext, rootNavigator: true);
+      if (navigator != null) {
+        _navigatorContext = navigator.context;
+        debugPrint('✅ ApiTracker: Navigator context captured from MaterialApp.router');
+      } else {
+        // Try Navigator.of to verify
+        try {
+          Navigator.of(navContext, rootNavigator: true);
+          _navigatorContext = navContext;
+          debugPrint('✅ ApiTracker: Navigator context captured directly from MaterialApp.router');
+        } catch (e) {
+          // Navigator not available yet
+        }
+      }
+    } catch (e) {
+      // Navigator not available
+    }
+  }
 }
 
 /// Main widget that wraps MaterialApp to enable API tracking
@@ -126,24 +157,25 @@ class _ApiTrackerState extends State<ApiTracker>
         builder: (context, child) {
           // Store the context from inside MaterialApp.router
           MaterialAppContext.setContext(context);
-          // Wrap with Builder to capture Navigator context after Router builds it
-          Widget result = Builder(
+          // Wrap child with Builder to capture Navigator context from Router's output
+          Widget result = child ?? const SizedBox.shrink();
+          
+          // Wrap with Builder to get context after Router builds Navigator
+          result = Builder(
             builder: (navContext) {
-              // After Navigator is built by Router, store the context that has Navigator
+              // Use multiple postFrameCallbacks to ensure Navigator is ready
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                try {
-                  // Verify this context has Navigator (from Router)
-                  Navigator.of(navContext, rootNavigator: true);
-                  MaterialAppContext.setContext(navContext);
-                  debugPrint('✅ ApiTracker: Navigator context captured from MaterialApp.router');
-                } catch (e) {
-                  // Navigator not available yet, keep trying
-                  debugPrint('⚠️ ApiTracker: Navigator not ready yet in MaterialApp.router: $e');
-                }
+                MaterialAppContext._tryCaptureNavigatorContext(navContext);
               });
-              return child ?? const SizedBox.shrink();
+              // Also try after a short delay to ensure Router has fully built
+              final contextToCapture = navContext;
+              Future.delayed(const Duration(milliseconds: 100), () {
+                MaterialAppContext._tryCaptureNavigatorContext(contextToCapture);
+              });
+              return result;
             },
           );
+          
           // Call original builder if exists
           if (app.builder != null) {
             result = app.builder!(context, result);
