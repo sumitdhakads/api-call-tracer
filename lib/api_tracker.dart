@@ -11,6 +11,15 @@ import 'package:flutter/material.dart';
 import 'services/api_tracker_service.dart';
 import 'widgets/tap_detector.dart';
 
+/// Global context storage for MaterialApp context
+class MaterialAppContext {
+  static BuildContext? _context;
+  static void setContext(BuildContext? context) {
+    _context = context;
+  }
+  static BuildContext? get context => _context;
+}
+
 /// Main widget that wraps MaterialApp to enable API tracking
 class ApiTracker extends StatefulWidget {
   final MaterialApp materialApp;
@@ -40,6 +49,7 @@ class _ApiTrackerState extends State<ApiTracker>
     WidgetsBinding.instance.removeObserver(this);
     // Clear API logs when app is closed
     _trackerService.clearApiCalls();
+    MaterialAppContext.setContext(null);
     super.dispose();
   }
 
@@ -53,11 +63,79 @@ class _ApiTrackerState extends State<ApiTracker>
     }
   }
 
+  Widget _wrapMaterialApp(Widget app) {
+    // If it's MaterialApp (not MaterialApp.router), modify its builder
+    if (app is MaterialApp && app.routerConfig == null) {
+      return MaterialApp(
+        key: app.key,
+        navigatorKey: _navigatorKey,
+        title: app.title,
+        debugShowCheckedModeBanner: app.debugShowCheckedModeBanner,
+        theme: app.theme,
+        darkTheme: app.darkTheme,
+        themeMode: app.themeMode,
+        home: app.home,
+        routes: app.routes ?? const {},
+        initialRoute: app.initialRoute,
+        onGenerateRoute: app.onGenerateRoute,
+        onGenerateInitialRoutes: app.onGenerateInitialRoutes,
+        onUnknownRoute: app.onUnknownRoute,
+        builder: (context, child) {
+          // Store the context from inside MaterialApp
+          MaterialAppContext.setContext(context);
+          // Ensure child is never null
+          final nonNullChild = child ?? const SizedBox.shrink();
+          // Call original builder if exists, ensuring we always return Widget
+          if (app.builder != null) {
+            return app.builder!(context, child);
+          }
+          return nonNullChild;
+        },
+        locale: app.locale,
+        localizationsDelegates: app.localizationsDelegates,
+        supportedLocales: app.supportedLocales,
+        localeResolutionCallback: app.localeResolutionCallback,
+        localeListResolutionCallback: app.localeListResolutionCallback,
+        scrollBehavior: app.scrollBehavior,
+      );
+    }
+    // For MaterialApp.router, wrap with a Builder inside the router
+    else if (app is MaterialApp && app.routerConfig != null) {
+      return MaterialApp.router(
+        key: app.key,
+        title: app.title,
+        debugShowCheckedModeBanner: app.debugShowCheckedModeBanner,
+        theme: app.theme,
+        darkTheme: app.darkTheme,
+        themeMode: app.themeMode,
+        routerConfig: app.routerConfig,
+        builder: (context, child) {
+          // Store the context from inside MaterialApp.router
+          MaterialAppContext.setContext(context);
+          // Ensure child is never null
+          final nonNullChild = child ?? const SizedBox.shrink();
+          // Call original builder if exists, ensuring we always return Widget
+          if (app.builder != null) {
+            return app.builder!(context, child);
+          }
+          return nonNullChild;
+        },
+        locale: app.locale,
+        localizationsDelegates: app.localizationsDelegates,
+        supportedLocales: app.supportedLocales,
+        localeResolutionCallback: app.localeResolutionCallback,
+        localeListResolutionCallback: app.localeListResolutionCallback,
+        scrollBehavior: app.scrollBehavior,
+      );
+    }
+    return app;
+  }
+
   @override
   Widget build(BuildContext context) {
     return TapDetector(
       navigatorKey: _navigatorKey,
-      child: widget.materialApp,
+      child: _wrapMaterialApp(widget.materialApp),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_tracker_service.dart';
 import 'api_logs_bottom_sheet.dart';
+import '../api_tracker.dart' show MaterialAppContext;
 
 class TapDetector extends StatefulWidget {
   final Widget child;
@@ -53,29 +54,40 @@ class _TapDetectorState extends State<TapDetector> {
   void _showApiLogs() {
     final apiCalls = _trackerService.apiCalls;
     
-    // Get context from MaterialApp tree - use stored context or navigator
-    BuildContext? targetContext = _materialAppContext;
+    // Get context from MaterialApp - use the stored context from MaterialApp's builder
+    BuildContext? targetContext = MaterialAppContext.context;
     
-    // If we don't have stored context, try to get it from navigator
-    if (targetContext == null) {
-      // Try navigator key first
-      if (widget.navigatorKey?.currentContext != null) {
-        targetContext = widget.navigatorKey!.currentContext;
-      } else {
-        // Try to find root navigator
-        try {
-          final navigator = Navigator.maybeOf(context, rootNavigator: true);
-          targetContext = navigator?.context;
-        } catch (e) {
-          // If that fails, we'll use the stored context from Builder
-        }
+    // Fallback: try navigator key
+    targetContext ??= widget.navigatorKey?.currentContext;
+    
+    // Fallback: try stored context from Builder
+    targetContext ??= _materialAppContext;
+    
+    // Last resort: try to find root navigator
+    targetContext ??= () {
+      try {
+        final navigator = Navigator.maybeOf(context, rootNavigator: true);
+        return navigator?.context;
+      } catch (e) {
+        return null;
       }
+    }();
+    
+    // If we still don't have a valid context, we can't show the bottom sheet
+    if (targetContext == null) {
+      debugPrint('ApiTracker: Could not find MaterialApp context to show bottom sheet');
+      return;
     }
     
-    // Use stored context from Builder (which is inside MaterialApp tree)
-    targetContext ??= _materialAppContext ?? context;
+    // Verify the context has MaterialLocalizations
+    try {
+      MaterialLocalizations.of(targetContext);
+    } catch (e) {
+      debugPrint('ApiTracker: Context does not have MaterialLocalizations');
+      return;
+    }
     
-    // Show bottom sheet with useRootNavigator to ensure MaterialLocalizations
+    // Show bottom sheet with the valid context
     showModalBottomSheet(
       context: targetContext,
       isScrollControlled: true,
