@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'api_tracker.dart';
-import 'services/api_tracker_service.dart' show ApiTrackerService, ApiTrackingClient;
 
 void main() {
   runApp(

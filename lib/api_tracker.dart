@@ -1,3 +1,12 @@
+// API Tracker Package
+// A Flutter package to track and monitor all API calls in your app.
+
+export 'models/api_call.dart';
+export 'services/api_tracker_service.dart';
+export 'widgets/api_logs_bottom_sheet.dart';
+export 'widgets/tap_detector.dart';
+
+// Main widget
 import 'package:flutter/material.dart';
 import 'services/api_tracker_service.dart';
 import 'widgets/tap_detector.dart';
@@ -55,4 +64,3 @@ class _ApiTrackerState extends State<ApiTracker>
 extension ApiTrackerExtension on BuildContext {
   ApiTrackerService get apiTracker => ApiTrackerService();
 }
-
